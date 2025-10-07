@@ -1,0 +1,16 @@
+{
+    "name": "consentify",
+    "private": true,
+    "version": "0.1.0",
+    "description": "Consentify monorepo: headless cookie consent SDK and adapters",
+    "workspaces": [
+        "packages/*"
+    ],
+    "scripts": {
+        "build": "npm run -w @consentify/core build",
+        "build:all": "npm run -ws build",
+        "clean": "rimraf packages/*/dist",
+        "lint": "echo 'no lint configured'",
+        "release": "npm run build:all && echo 'Tag and publish from CI'"
+    }
+}
