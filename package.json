@@ -6,11 +6,12 @@
     "workspaces": [
         "packages/*"
     ],
+    "packageManager": "pnpm@9",
     "scripts": {
-        "build": "npm run -w @consentify/core build",
-        "build:all": "npm run -ws build",
-        "clean": "rimraf packages/*/dist",
+        "build": "pnpm -w --filter @consentify/core build",
+        "build:all": "pnpm -r build",
+        "clean": "pnpm -r exec rimraf dist",
         "lint": "echo 'no lint configured'",
-        "release": "npm run build:all && echo 'Tag and publish from CI'"
+        "release": "pnpm build:all && echo 'Tag and publish from CI'"
     }
 }

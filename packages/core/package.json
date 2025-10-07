@@ -2,6 +2,14 @@
   "name": "@consentify/core",
   "version": "0.1.0",
   "description": "Headless cookie consent SDK (zero-deps, TS-first, SSR-safe)",
+  "author": {
+    "name": "Roman Denysov",
+    "url": "https://github.com/RomanDenysov"
+  },
+  "engines": {
+    "node": ">=18.18",
+    "pnpm": ">=9"
+  },
   "keywords": [
     "cookie",
     "consent",
@@ -14,13 +22,13 @@
   "sideEffects": false,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-org/consentify.git",
+    "url": "git+https://github.com/RomanDenysov/consentify.git",
     "directory": "packages/core"
   },
   "bugs": {
-    "url": "https://github.com/your-org/consentify/issues"
+    "url": "https://github.com/RomanDenysov/consentify/issues"
   },
-  "homepage": "https://github.com/your-org/consentify#readme",
+  "homepage": "https://github.com/RomanDenysov/consentify#readme",
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -44,7 +52,7 @@
     "access": "public"
   },
   "devDependencies": {
-    "rimraf": "^6.0.1",
-    "typescript": "^5.9.3"
+    "rimraf": "6.0.1",
+    "typescript": "5.9.3"
   }
 }

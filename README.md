@@ -5,10 +5,10 @@ Packages:
 - Future: `@consentify/react`, `@consentify/next`
 
 Development:
-- Build all: `npm run build:all`
-- Build core only: `npm run build` (workspace)
+- Build all: `pnpm -r build`
+- Build core only: `pnpm -w --filter @consentify/core build`
 
 Publishing:
-- CI will publish on tagged releases. Ensure `NPM_TOKEN` is set in GitHub secrets.
+- CI publishes on tags matching `core-v*`. Ensure `NPM_TOKEN` is set in GitHub secrets.
 
 License: MIT
