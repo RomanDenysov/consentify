@@ -6,6 +6,16 @@
     "name": "Roman Denysov",
     "url": "https://github.com/RomanDenysov"
   },
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/RomanDenysov"
+    },
+    {
+      "type": "ko-fi",
+      "url": "https://ko-fi.com/romandenysov"
+    }
+  ],
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9"

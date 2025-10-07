@@ -112,8 +112,15 @@ if (manager.client.get('analytics')) {
 }
 ```
 
+### Support
+
+If you find this library useful, consider supporting its development:
+
+- ⭐ [GitHub Sponsors](https://github.com/sponsors/RomanDenysov)
+- ☕ [Ko-fi](https://ko-fi.com/romandenysov)
+
 ### License
 
-MIT
+MIT © 2025 [Roman Denysov](https://github.com/RomanDenysov)
 
 

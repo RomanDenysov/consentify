@@ -1,14 +1,48 @@
 ## consentify monorepo
 
-Packages:
-- `@consentify/core`: Headless cookie consent SDK (TS-first, SSR-safe)
+Minimal, headless cookie consent management for modern web applications.
+
+### Packages
+
+- **[@consentify/core](./packages/core)** — Headless cookie consent SDK (TypeScript-first, SSR-safe, zero dependencies)
 - Future: `@consentify/react`, `@consentify/next`
 
-Development:
-- Build all: `pnpm -r build`
-- Build core only: `pnpm -w --filter @consentify/core build`
+### Development
 
-Publishing:
-- CI publishes on tags matching `core-v*`. Ensure `NPM_TOKEN` is set in GitHub secrets.
+```bash
+# Install dependencies
+pnpm install
 
-License: MIT
+# Build all packages
+pnpm -r build
+
+# Build core only
+pnpm -w --filter @consentify/core build
+```
+
+### Publishing
+
+CI publishes on tags matching `core-v*`. Ensure `NPM_TOKEN` is set in GitHub secrets.
+
+```bash
+# Create a new version with changeset
+pnpm changeset
+
+# Version packages
+pnpm changeset version
+
+# Publish (via CI or manually)
+git tag core-v0.1.0
+git push origin core-v0.1.0
+```
+
+### Support
+
+If you find this project useful, consider supporting its development:
+
+- ⭐ [GitHub Sponsors](https://github.com/sponsors/RomanDenysov)
+- ☕ [Ko-fi](https://ko-fi.com/romandenysov)
+
+### License
+
+MIT © 2025 [Roman Denysov](https://github.com/RomanDenysov)
