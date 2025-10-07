@@ -1,4 +1,9 @@
-## consentify monorepo
+# consentify
+
+[![npm version](https://img.shields.io/npm/v/@consentify/core.svg)](https://www.npmjs.com/package/@consentify/core)
+[![npm downloads](https://img.shields.io/npm/dm/@consentify/core.svg)](https://www.npmjs.com/package/@consentify/core)
+[![license](https://img.shields.io/npm/l/@consentify/core.svg)](https://github.com/RomanDenysov/consentify/blob/main/packages/core/LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue.svg)](https://www.typescriptlang.org/)
 
 Minimal, headless cookie consent management for modern web applications.
 
