@@ -9,8 +9,8 @@
         "release": "changeset publish"
     },
     "devDependencies": {
-        "@changesets/cli": "2.27.7",
-        "typescript": "5.6.3"
+        "@changesets/cli": "2.29.7",
+        "typescript": "5.9.3"
     },
-    "packageManager": "pnpm@9.12.0"
+    "packageManager": "pnpm@9.12.3"
 }

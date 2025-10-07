@@ -113,7 +113,7 @@ function writeCookie(
 }
 
 // --- Unified Factory (single entry point) ---
-export function createConsentify<const Cs extends readonly string[]>(init: CreateConsentifyInit<Cs>) {
+export function createConsentify<Cs extends readonly string[]>(init: CreateConsentifyInit<Cs>) {
     type T = ArrToUnion<Cs>;
     const policyHash = init.policy.identifier ?? hashPolicy(init.policy.categories);
     const cookieName = init.cookie?.name ?? DEFAULT_COOKIE;
