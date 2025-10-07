@@ -1,7 +1,7 @@
 {
   "name": "@consentify/core",
   "version": "0.1.0",
-  "description": "Headless cookie consent SDK (zero-deps, TS-first, SSR-safe)",
+  "description": "Minimal headless cookie consent SDK (TypeScript, SSR-ready, lazy-init).",
   "author": {
     "name": "Roman Denysov",
     "url": "https://github.com/RomanDenysov"
@@ -10,6 +10,7 @@
     "node": ">=18.18",
     "pnpm": ">=9"
   },
+  "packageManager": "pnpm@9.12.0",
   "keywords": [
     "cookie",
     "consent",
@@ -36,7 +37,7 @@
     }
   },
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.json",
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run build"
   },
   "module": "./dist/index.js",
@@ -53,6 +54,7 @@
   },
   "devDependencies": {
     "rimraf": "6.0.1",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "@types/node": "20.14.12"
   }
 }
