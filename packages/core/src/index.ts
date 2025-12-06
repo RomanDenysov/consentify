@@ -181,7 +181,6 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
     const writeClientRaw = (value: string) => {
         const primary = firstAvailableStore();
         writeToStore(primary, value);
-        // Mirror to cookie if requested anywhere in order and not already writing cookie
         if (primary !== 'cookie' && storageOrder.includes('cookie')) writeToStore('cookie', value);
     };
 
@@ -202,7 +201,7 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
     };
 
     function buildSetCookieHeader(name: string, value: string, opt: typeof cookieCfg): string {
-        let header  = `${name}=${value}; Path=${opt.path}; Max-Age=${opt.maxAgeSec}; SameSite=${opt.sameSite}`;
+        let header = `${name}=${value}; Path=${opt.path}; Max-Age=${opt.maxAgeSec}; SameSite=${opt.sameSite}`;
         if (opt.domain) header += `; Domain=${opt.domain}`;
         if (opt.secure) header += `; Secure`;
         return header;
@@ -228,7 +227,6 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
                 givenAt: toISO(),
                 choices: normalize({ ...base, ...choices }),
             };
-
             return buildSetCookieHeader(cookieName, enc(snapshot), cookieCfg);
         },
         clear: (): string => {
@@ -239,19 +237,45 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
         }
     };
 
+    // ========== NEW: Subscribe pattern for React ==========
+    const listeners = new Set<() => void>();
+    const unsetState: ConsentState<T> = { decision: 'unset' };
+    let cachedState: ConsentState<T> = unsetState;
+
+    const syncState = (): void => {
+        const s = readClient();
+        if (!s) {
+            cachedState = unsetState;
+        } else {
+            cachedState = { decision: 'decided', snapshot: s };
+        }
+    };
+
+    const notifyListeners = (): void => {
+        listeners.forEach(cb => cb());
+    };
+
+    // Init cache on browser
+    if (isBrowser()) {
+        syncState();
+    }
+    // ======================================================
+
     // ---- client API
     function clientGet(): ConsentState<T>;
     function clientGet(category: 'necessary' | T): boolean;
     function clientGet(category?: 'necessary' | T): ConsentState<T> | boolean {
-        const s = readClient();
-        const state: ConsentState<T> = s ? { decision: 'decided', snapshot: s } : { decision: 'unset' };
-        if (typeof category === 'undefined') return state;
+        // Return cached state for React compatibility
+        if (typeof category === 'undefined') return cachedState;
         if (category === 'necessary') return true;
-        return state.decision === 'decided' ? !!state.snapshot.choices[category] : false;
+        return cachedState.decision === 'decided' 
+            ? !!cachedState.snapshot.choices[category] 
+            : false;
     }
 
     const client = {
         get: clientGet,
+        
         set: (choices: Partial<Choices<T>>) => {
             const prev = client.get();
             const base = prev.decision === 'decided' ? prev.snapshot.choices : normalize();
@@ -260,14 +284,29 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
                 givenAt: toISO(),
                 choices: normalize({ ...base, ...choices }),
             };
-            writeClientIfChanged(next);
+            const changed = writeClientIfChanged(next);
+            if (changed) {
+                syncState();
+                notifyListeners();
+            }
         },
+        
         clear: () => {
             for (const k of new Set<StorageKind>([...storageOrder, 'cookie'])) clearStore(k);
+            syncState();
+            notifyListeners();
         },
+
+        // NEW: Subscribe for React useSyncExternalStore
+        subscribe: (callback: () => void): (() => void) => {
+            listeners.add(callback);
+            return () => listeners.delete(callback);
+        },
+
+        // NEW: Server snapshot for SSR (always unset)
+        getServerSnapshot: (): ConsentState<T> => unsetState,
     };
 
-    // ---- single entry (DX aliases)
     return {
         policy: {
             categories: init.policy.categories,
