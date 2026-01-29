@@ -12,7 +12,7 @@
 - **🪶 Lightweight** — Zero runtime dependencies, ~2KB minified + gzipped
 - **🔒 Type-safe** — Full TypeScript support with inference for your categories
 - **⚡ SSR-ready** — Separate server/client APIs that never touch the DOM on server
-- **⚛️ React-native** — Built-in `useSyncExternalStore` support for React 18+
+- **⚛️ React-ready** — Built-in `useSyncExternalStore` support for React 18+
 - **🎯 Headless** — Bring your own UI, we handle the state
 - **📋 Compliant** — Built for GDPR, CCPA, and similar regulations
 
@@ -54,46 +54,38 @@ const state = consent.client.get();
 
 ## React Integration
 
-Works seamlessly with React 18+ using `useSyncExternalStore`:
+For React projects, use the [`@consentify/react`](https://www.npmjs.com/package/@consentify/react) package which provides a ready-to-use hook:
+
+```bash
+npm install @consentify/react
+```
 
 ```tsx
-import { useSyncExternalStore } from 'react';
-import { createConsentify, defaultCategories } from '@consentify/core';
+import { createConsentify, defaultCategories, useConsentify } from '@consentify/react';
 
-// Create once at module level
-export const consent = createConsentify({
+const consent = createConsentify({
   policy: { identifier: 'v1.0', categories: defaultCategories },
 });
 
-// Custom hook
-export function useConsent() {
-  return useSyncExternalStore(
-    consent.client.subscribe,
-    consent.client.get,
-    consent.client.getServerSnapshot
-  );
-}
-
-// Component
 function CookieBanner() {
-  const state = useConsent();
+  const state = useConsentify(consent);
 
   if (state.decision === 'decided') return null;
 
   return (
     <div className="cookie-banner">
       <p>We use cookies to enhance your experience.</p>
-      <button onClick={() => consent.client.set({ 
-        analytics: true, 
+      <button onClick={() => consent.client.set({
+        analytics: true,
         marketing: true,
-        preferences: true 
+        preferences: true
       })}>
         Accept All
       </button>
-      <button onClick={() => consent.client.set({ 
-        analytics: false, 
+      <button onClick={() => consent.client.set({
+        analytics: false,
         marketing: false,
-        preferences: false 
+        preferences: false
       })}>
         Essential Only
       </button>
@@ -101,6 +93,30 @@ function CookieBanner() {
   );
 }
 ```
+
+<details>
+<summary>Manual integration with useSyncExternalStore</summary>
+
+If you prefer not to add the React package, you can use `useSyncExternalStore` directly:
+
+```tsx
+import { useSyncExternalStore } from 'react';
+import { createConsentify, defaultCategories } from '@consentify/core';
+
+const consent = createConsentify({
+  policy: { identifier: 'v1.0', categories: defaultCategories },
+});
+
+function useConsent() {
+  return useSyncExternalStore(
+    consent.client.subscribe,
+    consent.client.get,
+    consent.client.getServerSnapshot
+  );
+}
+```
+
+</details>
 
 ## Server-Side Usage
 
@@ -182,9 +198,12 @@ createConsentify({
     identifier: 'v1.0',           // Recommended: version your policy
     categories: defaultCategories,
   },
+  // Consent validity (when to re-prompt user)
+  consentMaxAgeDays: 365,         // Optional: re-consent after N days
+  // Cookie storage settings (browser retention)
   cookie: {
     name: 'consent',              // Default: 'consentify'
-    maxAgeSec: 60 * 60 * 24 * 365, // Default: 1 year
+    maxAgeSec: 60 * 60 * 24 * 365, // Default: 1 year (browser storage)
     sameSite: 'Lax',              // 'Lax' | 'Strict' | 'None'
     secure: true,                 // Forced true when sameSite='None'
     path: '/',
@@ -257,13 +276,16 @@ const defaultCategories = [
 
 4. **Compact format** — Consent is stored as a URL-encoded JSON snapshot in a single cookie.
 
+5. **Consent expiration** — Optional `consentMaxAgeDays` invalidates consent after N days, requiring users to re-consent. This is independent of `cookie.maxAgeSec` (which controls how long the browser stores the cookie).
+
 ## Support
 
 If you find this library useful:
 
 - ⭐ Star the repo on [GitHub](https://github.com/RomanDenysov/consentify)
 - 💖 [Sponsor on GitHub](https://github.com/sponsors/RomanDenysov)
-- ☕ [Buy me a coffee](https://ko-fi.com/romandenysov)
+- ☕ [Buy me a coffee on Ko-fi](https://ko-fi.com/romandenysov)
+- ☕ [Buy me a coffee](https://buymeacoffee.com/romandenysov)
 
 ## License
 

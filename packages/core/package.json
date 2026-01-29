@@ -1,6 +1,6 @@
 {
   "name": "@consentify/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Minimal headless cookie consent SDK (TypeScript, SSR-ready, lazy-init).",
   "author": {
     "name": "Roman Denysov",
@@ -14,6 +14,10 @@
     {
       "type": "ko-fi",
       "url": "https://ko-fi.com/romandenysov"
+    },
+    {
+      "type": "buymeacoffee",
+      "url": "https://buymeacoffee.com/romandenysov"
     }
   ],
   "engines": {
@@ -48,6 +52,7 @@
   },
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
   "module": "./dist/index.js",

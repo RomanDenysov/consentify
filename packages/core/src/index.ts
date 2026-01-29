@@ -61,6 +61,11 @@ export interface CreateConsentifyInit<Cs extends readonly string[]> {
         secure?: boolean; path?: string; domain?: string;
     };
     /**
+     * Maximum age of consent in days. If set, consent older than this
+     * will be treated as expired, requiring re-consent.
+     */
+    consentMaxAgeDays?: number;
+    /**
      * Client-side storage priority. Server-side access is cookie-only.
      * Supported: 'cookie' (canonical), 'localStorage' (optional mirror for fast reads)
      * Default: ['cookie']
@@ -95,6 +100,16 @@ const enc = (o: unknown) => encodeURIComponent(JSON.stringify(o));
 const dec = <T>(s: string) => { try { return JSON.parse(decodeURIComponent(s)) as T; } catch { return null; } };
 const toISO = () => new Date().toISOString();
 
+function isValidSnapshot<T extends UserCategory>(s: unknown): s is Snapshot<T> {
+    return (
+        typeof s === 'object' && s !== null &&
+        typeof (s as any).policy === 'string' &&
+        typeof (s as any).givenAt === 'string' &&
+        typeof (s as any).choices === 'object' &&
+        (s as any).choices !== null
+    );
+}
+
 function readCookie(name: string, cookieStr?: string): string | null {
     const src = cookieStr ?? (typeof document !== 'undefined' ? document.cookie : '');
     if (!src) return null;
@@ -126,6 +141,15 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
         domain: init.cookie?.domain,
     };
     const storageOrder: StorageKind[] = (init.storage && init.storage.length > 0) ? init.storage : ['cookie'];
+    const consentMaxAgeDays = init.consentMaxAgeDays;
+
+    const isExpired = (givenAt: string): boolean => {
+        if (!consentMaxAgeDays) return false;
+        const givenTime = new Date(givenAt).getTime();
+        if (isNaN(givenTime)) return true; // Invalid date = expired
+        const maxAgeMs = consentMaxAgeDays * 24 * 60 * 60 * 1000;
+        return Date.now() - givenTime > maxAgeMs;
+    };
 
     const allowed = new Set<Necessary | T>(['necessary', ...(init.policy.categories as unknown as T[])]);
 
@@ -188,8 +212,9 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
     const readClient = (): Snapshot<T> | null => {
         const raw = readClientRaw();
         const s = raw ? dec<Snapshot<T>>(raw) : null;
-        if (!s) return null;
+        if (!s || !isValidSnapshot<T>(s)) return null;
         if (s.policy !== policyHash) return null;
+        if (isExpired(s.givenAt)) return null;
         return s;
     };
 
@@ -212,8 +237,9 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
         get: (cookieHeader: string | null | undefined): ConsentState<T> => {
             const raw = cookieHeader ? readCookie(cookieName, cookieHeader) : null;
             const s = raw ? dec<Snapshot<T>>(raw) : null;
-            if (!s) return { decision: 'unset' };
+            if (!s || !isValidSnapshot<T>(s)) return { decision: 'unset' };
             if (s.policy !== policyHash) return { decision: 'unset' };
+            if (isExpired(s.givenAt)) return { decision: 'unset' };
             return { decision: 'decided', snapshot: s };
         },
         set: (
