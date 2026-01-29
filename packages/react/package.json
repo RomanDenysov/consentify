@@ -1,0 +1,81 @@
+{
+  "name": "@consentify/react",
+  "version": "1.0.0",
+  "description": "React hook for @consentify/core",
+  "author": {
+    "name": "Roman Denysov",
+    "url": "https://github.com/RomanDenysov"
+  },
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/RomanDenysov"
+    },
+    {
+      "type": "ko-fi",
+      "url": "https://ko-fi.com/romandenysov"
+    },
+    {
+      "type": "buymeacoffee",
+      "url": "https://buymeacoffee.com/romandenysov"
+    }
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.12.3",
+  "keywords": [
+    "cookie",
+    "consent",
+    "gdpr",
+    "ccpa",
+    "privacy",
+    "typescript",
+    "react",
+    "hooks"
+  ],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RomanDenysov/consentify.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/RomanDenysov/consentify/issues"
+  },
+  "homepage": "https://github.com/RomanDenysov/consentify#readme",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit"
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "@consentify/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.7.0"
+  }
+}
