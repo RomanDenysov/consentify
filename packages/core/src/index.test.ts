@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createConsentify, defaultCategories } from './index';
+import { createConsentify, defaultCategories, enableConsentMode, type ConsentifySubscribable, type ConsentState } from './index';
 
 // --- Exported helper access (re-implement for testing since they're not exported) ---
 
@@ -307,9 +307,21 @@ describe('client API', () => {
         const good = vi.fn();
         c.client.subscribe(bad);
         c.client.subscribe(good);
+        const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
         c.client.set({ analytics: true });
         expect(bad).toHaveBeenCalled();
         expect(good).toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
+    it('subscribe() error is logged via console.error', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const err = new Error('boom');
+        c.client.subscribe(() => { throw err; });
+        const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        c.client.set({ analytics: true });
+        expect(spy).toHaveBeenCalledWith('[consentify] Listener callback threw:', err);
+        spy.mockRestore();
     });
 
     it('getServerSnapshot() always returns unset', () => {
@@ -344,10 +356,12 @@ describe('storage fallback', () => {
             policy: { categories: ['analytics'] as const },
             storage: ['localStorage', 'cookie'],
         });
+        const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
         // Should not throw
         expect(() => c.client.set({ analytics: true })).not.toThrow();
         // Consent should be readable via the client API (cookie mirror worked)
         expect(c.client.get('analytics')).toBe(true);
+        spy.mockRestore();
         window.localStorage.setItem = orig;
     });
 });
@@ -507,5 +521,449 @@ describe('client.guard()', () => {
         c.client.set({ analytics: false });
         c.client.set({ analytics: true });
         expect(onGrant).toHaveBeenCalledTimes(1);
+    });
+});
+
+// ============================================================
+// 10. Unified top-level API
+// ============================================================
+describe('unified top-level API', () => {
+    beforeEach(clearAllCookies);
+
+    it('get() delegates to client.get()', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        expect(c.get()).toEqual({ decision: 'unset' });
+        c.client.set({ analytics: true });
+        expect(c.get().decision).toBe('decided');
+    });
+
+    it('get(cookieHeader) delegates to server.get()', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const snapshot = {
+            policy: c.policy.identifier,
+            givenAt: new Date().toISOString(),
+            choices: { necessary: true, analytics: true },
+        };
+        const header = `consentify=${enc(snapshot)}`;
+        const state = c.get(header);
+        expect(state.decision).toBe('decided');
+    });
+
+    it('get(null) falls through to client.get()', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        expect(c.get(null)).toEqual({ decision: 'unset' });
+    });
+
+    it('get("") delegates to server.get() and returns unset', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        expect(c.get('')).toEqual({ decision: 'unset' });
+    });
+
+    it('isGranted("analytics") returns correct boolean', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        expect(c.isGranted('analytics')).toBe(false);
+        c.client.set({ analytics: true });
+        expect(c.isGranted('analytics')).toBe(true);
+    });
+
+    it('isGranted("necessary") always returns true', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        expect(c.isGranted('necessary')).toBe(true);
+    });
+
+    it('set(choices) delegates to client.set()', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        c.set({ analytics: true });
+        expect(c.client.get('analytics')).toBe(true);
+    });
+
+    it('set(choices, cookieHeader) returns Set-Cookie string', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const result = c.set({ analytics: true }, '');
+        expect(typeof result).toBe('string');
+        expect(result).toContain('consentify=');
+    });
+
+    it('clear() delegates to client.clear()', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        c.client.set({ analytics: true });
+        expect(c.get().decision).toBe('decided');
+        c.clear();
+        expect(c.get()).toEqual({ decision: 'unset' });
+    });
+
+    it('clear(cookieHeader) returns clearing header', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const result = c.clear('somecookie=value');
+        expect(typeof result).toBe('string');
+        expect(result).toContain('Max-Age=0');
+    });
+
+    it('subscribe(cb) works at top level', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const cb = vi.fn();
+        const unsub = c.subscribe(cb);
+        c.set({ analytics: true });
+        expect(cb).toHaveBeenCalledTimes(1);
+        unsub();
+        c.set({ analytics: false });
+        expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('guard() works at top level', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const onGrant = vi.fn();
+        c.guard('analytics', onGrant);
+        expect(onGrant).not.toHaveBeenCalled();
+        c.set({ analytics: true });
+        expect(onGrant).toHaveBeenCalledTimes(1);
+    });
+
+    it('getServerSnapshot() returns unset', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        expect(c.getServerSnapshot()).toEqual({ decision: 'unset' });
+    });
+});
+
+// ============================================================
+// 11. enableConsentMode (Google Consent Mode v2)
+// ============================================================
+
+function findGtagCall(action: string, type: string): Record<string, unknown> | undefined {
+    for (const entry of window.dataLayer as any[]) {
+        const args = Array.from(entry);
+        if (args[0] === action && args[1] === type) {
+            return args[2] as Record<string, unknown>;
+        }
+    }
+    return undefined;
+}
+
+function countGtagCalls(action: string, type: string): number {
+    let count = 0;
+    for (const entry of window.dataLayer as any[]) {
+        const args = Array.from(entry);
+        if (args[0] === action && args[1] === type) count++;
+    }
+    return count;
+}
+
+describe('enableConsentMode', () => {
+    let consent: ReturnType<typeof createConsentify<readonly ['analytics', 'marketing', 'preferences']>>;
+
+    beforeEach(() => {
+        delete (window as any).dataLayer;
+        delete (window as any).gtag;
+        clearAllCookies();
+        localStorage.clear();
+
+        consent = createConsentify({
+            policy: { categories: ['analytics', 'marketing', 'preferences'] as const },
+        });
+    });
+
+    it('returns no-op dispose and makes no gtag calls in SSR', () => {
+        const origWindow = globalThis.window;
+        Object.defineProperty(globalThis, 'window', { value: undefined, configurable: true });
+
+        const dispose = enableConsentMode(consent, {
+            mapping: { analytics: ['analytics_storage'] },
+        });
+
+        expect(dispose).toBeTypeOf('function');
+        dispose();
+
+        Object.defineProperty(globalThis, 'window', { value: origWindow, configurable: true });
+    });
+
+    it('bootstraps dataLayer and gtag if missing', () => {
+        expect(window.dataLayer).toBeUndefined();
+        expect(window.gtag).toBeUndefined();
+
+        enableConsentMode(consent, {
+            mapping: { analytics: ['analytics_storage'] },
+        });
+
+        expect(Array.isArray(window.dataLayer)).toBe(true);
+        expect(typeof window.gtag).toBe('function');
+    });
+
+    it('preserves existing dataLayer and gtag', () => {
+        const existingData = [{ event: 'existing' }];
+        window.dataLayer = existingData;
+        const customGtag = vi.fn(function gtag() { window.dataLayer.push(arguments); });
+        window.gtag = customGtag;
+
+        enableConsentMode(consent, {
+            mapping: { analytics: ['analytics_storage'] },
+        });
+
+        expect(window.dataLayer[0]).toEqual({ event: 'existing' });
+        expect(customGtag).toHaveBeenCalled();
+    });
+
+    it('calls gtag consent default on init with mapped types as denied', () => {
+        enableConsentMode(consent, {
+            mapping: {
+                analytics: ['analytics_storage'],
+                marketing: ['ad_storage', 'ad_user_data', 'ad_personalization'],
+            },
+        });
+
+        const defaultCall = findGtagCall('consent', 'default');
+        expect(defaultCall).toBeDefined();
+        expect(defaultCall!.analytics_storage).toBe('denied');
+        expect(defaultCall!.ad_storage).toBe('denied');
+        expect(defaultCall!.ad_user_data).toBe('denied');
+        expect(defaultCall!.ad_personalization).toBe('denied');
+    });
+
+    it('passes wait_for_update in default call when provided', () => {
+        enableConsentMode(consent, {
+            mapping: { analytics: ['analytics_storage'] },
+            waitForUpdate: 500,
+        });
+
+        const defaultCall = findGtagCall('consent', 'default');
+        expect(defaultCall).toBeDefined();
+        expect(defaultCall!.wait_for_update).toBe(500);
+    });
+
+    it('does not include wait_for_update when not provided', () => {
+        enableConsentMode(consent, {
+            mapping: { analytics: ['analytics_storage'] },
+        });
+
+        const defaultCall = findGtagCall('consent', 'default');
+        expect(defaultCall).toBeDefined();
+        expect(defaultCall!).not.toHaveProperty('wait_for_update');
+    });
+
+    it('calls both default and update if consent already decided', () => {
+        consent.set({ analytics: true, marketing: false });
+
+        enableConsentMode(consent, {
+            mapping: {
+                analytics: ['analytics_storage'],
+                marketing: ['ad_storage'],
+            },
+        });
+
+        expect(countGtagCalls('consent', 'default')).toBe(1);
+        expect(countGtagCalls('consent', 'update')).toBe(1);
+
+        const updateCall = findGtagCall('consent', 'update');
+        expect(updateCall!.analytics_storage).toBe('granted');
+        expect(updateCall!.ad_storage).toBe('denied');
+    });
+
+    it('only calls default if consent is unset', () => {
+        enableConsentMode(consent, {
+            mapping: { analytics: ['analytics_storage'] },
+        });
+
+        expect(countGtagCalls('consent', 'default')).toBe(1);
+        expect(countGtagCalls('consent', 'update')).toBe(0);
+    });
+
+    it('calls gtag consent update on set()', () => {
+        enableConsentMode(consent, {
+            mapping: {
+                analytics: ['analytics_storage'],
+                marketing: ['ad_storage', 'ad_user_data'],
+            },
+        });
+
+        consent.set({ analytics: true, marketing: false });
+
+        const updateCalls = (window.dataLayer as any[]).filter(entry => {
+            const args = Array.from(entry);
+            return args[0] === 'consent' && args[1] === 'update';
+        });
+
+        expect(updateCalls.length).toBeGreaterThanOrEqual(1);
+        const lastUpdate = Array.from(updateCalls[updateCalls.length - 1]) as unknown[];
+        const payload = lastUpdate[2] as Record<string, string>;
+        expect(payload.analytics_storage).toBe('granted');
+        expect(payload.ad_storage).toBe('denied');
+        expect(payload.ad_user_data).toBe('denied');
+    });
+
+    it('maps multiple categories correctly', () => {
+        enableConsentMode(consent, {
+            mapping: {
+                analytics: ['analytics_storage'],
+                marketing: ['ad_storage'],
+                preferences: ['functionality_storage', 'personalization_storage'],
+            },
+        });
+
+        consent.set({ analytics: true, marketing: false, preferences: true });
+
+        const updateCalls = (window.dataLayer as any[]).filter(entry => {
+            const args = Array.from(entry);
+            return args[0] === 'consent' && args[1] === 'update';
+        });
+        const lastUpdate = Array.from(updateCalls[updateCalls.length - 1]) as unknown[];
+        const payload = lastUpdate[2] as Record<string, string>;
+
+        expect(payload.analytics_storage).toBe('granted');
+        expect(payload.ad_storage).toBe('denied');
+        expect(payload.functionality_storage).toBe('granted');
+        expect(payload.personalization_storage).toBe('granted');
+    });
+
+    it('maps necessary to granted always', () => {
+        enableConsentMode(consent, {
+            mapping: {
+                necessary: ['security_storage'],
+                analytics: ['analytics_storage'],
+            },
+        });
+
+        const defaultCall = findGtagCall('consent', 'default');
+        expect(defaultCall!.security_storage).toBe('granted');
+        expect(defaultCall!.analytics_storage).toBe('denied');
+    });
+
+    it('dispose stops future updates', () => {
+        const dispose = enableConsentMode(consent, {
+            mapping: { analytics: ['analytics_storage'] },
+        });
+
+        dispose();
+
+        const countBefore = countGtagCalls('consent', 'update');
+        consent.set({ analytics: true });
+        const countAfter = countGtagCalls('consent', 'update');
+
+        expect(countAfter).toBe(countBefore);
+    });
+
+    it('handles clear() (consent revoked)', () => {
+        enableConsentMode(consent, {
+            mapping: { analytics: ['analytics_storage'] },
+        });
+
+        consent.set({ analytics: true });
+        const updatesBefore = countGtagCalls('consent', 'update');
+
+        consent.clear();
+
+        const updatesAfter = countGtagCalls('consent', 'update');
+        expect(updatesAfter).toBe(updatesBefore);
+    });
+
+    it('survives a throwing gtag and still subscribes', () => {
+        window.dataLayer = [];
+        window.gtag = vi.fn(() => { throw new Error('gtag broke'); });
+        const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const dispose = enableConsentMode(consent, {
+            mapping: { analytics: ['analytics_storage'] },
+        });
+
+        // Should not throw — safeGtag catches it
+        expect(spy).toHaveBeenCalledWith(
+            '[consentify] gtag call failed:',
+            expect.any(Error),
+        );
+
+        // Subscription should still work — replace gtag with a working one
+        window.gtag = function gtag() { window.dataLayer.push(arguments); };
+        consent.set({ analytics: true });
+        expect(countGtagCalls('consent', 'update')).toBeGreaterThanOrEqual(1);
+
+        dispose();
+        spy.mockRestore();
+    });
+
+    it('works with a minimal ConsentifySubscribable (not a full instance)', () => {
+        let state: ConsentState<'analytics'> = { decision: 'unset' };
+        const listeners = new Set<() => void>();
+        const subscribable: ConsentifySubscribable<'analytics'> = {
+            subscribe: (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
+            get: () => state,
+            getServerSnapshot: () => ({ decision: 'unset' }),
+        };
+
+        const dispose = enableConsentMode(subscribable, {
+            mapping: { analytics: ['analytics_storage'] },
+        });
+
+        // Default call should have been made with denied
+        const defaultCall = findGtagCall('consent', 'default');
+        expect(defaultCall).toBeDefined();
+        expect(defaultCall!.analytics_storage).toBe('denied');
+
+        // Simulate consent decision
+        state = {
+            decision: 'decided',
+            snapshot: {
+                policy: 'x',
+                givenAt: new Date().toISOString(),
+                choices: { necessary: true, analytics: true },
+            },
+        };
+        listeners.forEach(cb => cb());
+
+        const updateCall = findGtagCall('consent', 'update');
+        expect(updateCall).toBeDefined();
+        expect(updateCall!.analytics_storage).toBe('granted');
+
+        dispose();
+    });
+});
+
+// ============================================================
+// 12. Server API — merge & cookie config
+// ============================================================
+describe('server API — merge & cookie config', () => {
+    it('server.set() merges with existing consent from currentCookieHeader', () => {
+        const c = createConsentify({ policy: { categories: ['analytics', 'marketing'] as const } });
+        // First, set analytics via server
+        const header1 = c.server.set({ analytics: true });
+        const cookieVal = header1.split(';')[0]; // "consentify=..."
+        // Now set marketing, passing existing cookie
+        const header2 = c.server.set({ marketing: true }, cookieVal);
+        const val = header2.split(';')[0].split('=').slice(1).join('=');
+        const snapshot = JSON.parse(decodeURIComponent(val));
+        expect(snapshot.choices.analytics).toBe(true);
+        expect(snapshot.choices.marketing).toBe(true);
+    });
+
+    it('SameSite=None forces Secure flag in server headers', () => {
+        const c = createConsentify({
+            policy: { categories: ['analytics'] },
+            cookie: { sameSite: 'None', secure: false },
+        });
+        const header = c.server.set({ analytics: true });
+        expect(header).toContain('SameSite=None');
+        expect(header).toContain('Secure');
+    });
+
+    it('domain option appears in Set-Cookie header', () => {
+        const c = createConsentify({
+            policy: { categories: ['analytics'] },
+            cookie: { domain: '.example.com' },
+        });
+        const header = c.server.set({ analytics: true });
+        expect(header).toContain('Domain=.example.com');
+    });
+
+    it('domain option appears in clear header', () => {
+        const c = createConsentify({
+            policy: { categories: ['analytics'] },
+            cookie: { domain: '.example.com' },
+        });
+        const header = c.server.clear();
+        expect(header).toContain('Domain=.example.com');
+    });
+
+    it('clear() returns the same header regardless of input', () => {
+        const c = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const result1 = c.clear('foo=bar');
+        const result2 = c.clear('baz=qux');
+        expect(result1).toBe(result2);
     });
 });

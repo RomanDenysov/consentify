@@ -1,25 +1,15 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { ConsentState } from "@consentify/core";
-
-interface ConsentifyClient<T extends string> {
-  subscribe: (callback: () => void) => () => void;
-  get: () => ConsentState<T>;
-  getServerSnapshot: () => ConsentState<T>;
-}
-
-interface ConsentifyInstance<T extends string> {
-  client: ConsentifyClient<T>;
-}
+import type { ConsentifySubscribable } from "@consentify/core";
 
 export function useConsentify<T extends string>(
-  instance: ConsentifyInstance<T>
-): ConsentState<T> {
+  instance: ConsentifySubscribable<T>
+): ReturnType<typeof instance.get> {
   return useSyncExternalStore(
-    instance.client.subscribe,
-    instance.client.get,
-    instance.client.getServerSnapshot
+    instance.subscribe,
+    instance.get,
+    instance.getServerSnapshot
   );
 }
 
