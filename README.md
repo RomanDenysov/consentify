@@ -35,17 +35,6 @@ consent.client.set({ analytics: true });
 consent.client.get('analytics'); // true
 ```
 
-## Why Consentify?
-
-| | Consentify | CookieBot | CookieYes | DIY |
-|---|---|---|---|---|
-| Bundle size | ~2 KB | 140 KB+ | 90 KB+ | varies |
-| Script blocking | `guard()` | manual | manual | manual |
-| SSR support | native | none | none | manual |
-| Headless (own UI) | yes | no | no | yes |
-| Zero dependencies | yes | no | no | varies |
-| Price | Free / OSS | from $12/mo | from $9/mo | Free |
-
 ## The Full Integration: Blocking Google Analytics Until Consent
 
 This is what consent management is actually for -- preventing tracking scripts from loading until the user explicitly opts in. `guard()` handles the entire lifecycle: wait for consent, load the script, and optionally clean up if consent is revoked.
