@@ -33,6 +33,19 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/gtm:
+    dependencies:
+      '@consentify/core':
+        specifier: workspace:^
+        version: link:../core
+    devDependencies:
+      rimraf:
+        specifier: ^6.0.0
+        version: 6.0.1
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/react:
     dependencies:
       '@consentify/core':

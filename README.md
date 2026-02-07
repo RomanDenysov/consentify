@@ -258,6 +258,7 @@ The `'necessary'` category is always `true` and cannot be disabled. When you cha
 |---------|-------------|
 | [@consentify/core](./packages/core) | Headless consent SDK -- TypeScript-first, SSR-safe, zero dependencies |
 | [@consentify/react](./packages/react) | React hook for @consentify/core |
+| [@consentify/gtm](./packages/gtm) | Google Consent Mode v2 adapter |
 
 ## Coming Soon: Consentify SaaS
 
@@ -272,7 +273,6 @@ A hosted consent management platform with a visual banner editor, analytics dash
 
 ## Roadmap
 
-- `@consentify/gtm` -- Google Consent Mode v2 adapter
 - `@consentify/next` -- Next.js middleware with automatic cookie handling
 - Geo-aware consent defaults -- show banners only where required
 
