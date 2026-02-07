@@ -44,7 +44,7 @@ export interface Snapshot<T extends UserCategory> {
  * High-level consent state derived from the presence of a valid snapshot.
  * When no valid snapshot exists for the current policy version, the state is `unset`.
  */
-export type ConsentState<T extends UserCategory> = 
+export type ConsentState<T extends UserCategory> =
 | {decision: 'unset'}
 | {decision: 'decided', snapshot: Snapshot<T>}
 
@@ -71,6 +71,16 @@ export interface CreateConsentifyInit<Cs extends readonly string[]> {
      * Default: ['cookie']
      */
     storage?: StorageKind[];
+}
+
+/**
+ * Minimal interface for subscribing to consent state changes.
+ * Used by `enableConsentMode` and other adapters that need reactive consent state.
+ */
+export interface ConsentifySubscribable<T extends UserCategory> {
+    subscribe: (callback: () => void) => () => void;
+    get: () => ConsentState<T>;
+    getServerSnapshot: () => ConsentState<T>;
 }
 
 function stableStringify(o: unknown): string {
@@ -116,21 +126,24 @@ function isValidSnapshot<T extends UserCategory>(s: unknown): s is Snapshot<T> {
     return true;
 }
 
+type CookieOpt = { maxAgeSec: number; sameSite: 'Lax'|'Strict'|'None'; secure: boolean; path: string; domain?: string };
+
+function buildSetCookieHeader(name: string, value: string, opt: CookieOpt): string {
+    let h = `${name}=${value}; Path=${opt.path}; Max-Age=${opt.maxAgeSec}; SameSite=${opt.sameSite}`;
+    if (opt.domain) h += `; Domain=${opt.domain}`;
+    if (opt.secure) h += `; Secure`;
+    return h;
+}
+
 function readCookie(name: string, cookieStr?: string): string | null {
     const src = cookieStr ?? (typeof document !== 'undefined' ? document.cookie : '');
     if (!src) return null;
     const m = src.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
     return m ? m.slice(name.length + 1) : null;
 }
-function writeCookie(
-    name: string, value: string,
-    opt: { maxAgeSec: number; sameSite: 'Lax'|'Strict'|'None'; secure: boolean; path: string; domain?: string }
-): void {
+function writeCookie(name: string, value: string, opt: CookieOpt): void {
     if (typeof document === 'undefined') return;
-    let c = `${name}=${value}; Path=${opt.path}; Max-Age=${opt.maxAgeSec}; SameSite=${opt.sameSite}`;
-    if (opt.domain) c += `; Domain=${opt.domain}`;
-    if (opt.secure) c += `; Secure`;
-    document.cookie = c;
+    document.cookie = buildSetCookieHeader(name, value, opt);
 }
 
 // --- Unified Factory (single entry point) ---
@@ -178,20 +191,21 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
     const readFromStore = (kind: StorageKind): string | null => {
         switch (kind) {
             case 'cookie': return readCookie(cookieName);
-            case 'localStorage': try { return canLocal() ? window.localStorage.getItem(cookieName) : null; } catch { return null; }
+            case 'localStorage': try { return canLocal() ? window.localStorage.getItem(cookieName) : null; } catch (err) { console.warn('[consentify] localStorage read failed:', err); return null; }
             default: return null;
         }
     };
     const writeToStore = (kind: StorageKind, value: string) => {
         switch (kind) {
             case 'cookie': writeCookie(cookieName, value, cookieCfg); break;
-            case 'localStorage': try { if (canLocal()) window.localStorage.setItem(cookieName, value); } catch { /* quota exceeded or access denied */ } break;
+            case 'localStorage': try { if (canLocal()) window.localStorage.setItem(cookieName, value); } catch (err) { console.warn('[consentify] localStorage write failed:', err); } break;
         }
     };
+    const clearCookieHeader = () => buildSetCookieHeader(cookieName, '', { ...cookieCfg, maxAgeSec: 0 });
     const clearStore = (kind: StorageKind) => {
         switch (kind) {
-            case 'cookie': if (isBrowser()) document.cookie = `${cookieName}=; Path=${cookieCfg.path}; Max-Age=0; SameSite=${cookieCfg.sameSite}${cookieCfg.domain ? `; Domain=${cookieCfg.domain}` : ''}${cookieCfg.secure ? '; Secure' : ''}`; break;
-            case 'localStorage': try { if (canLocal()) window.localStorage.removeItem(cookieName); } catch { /* access denied */ } break;
+            case 'cookie': if (isBrowser()) document.cookie = clearCookieHeader(); break;
+            case 'localStorage': try { if (canLocal()) window.localStorage.removeItem(cookieName); } catch (err) { console.warn('[consentify] localStorage clear failed:', err); } break;
         }
     };
     const firstAvailableStore = (): StorageKind => {
@@ -231,13 +245,6 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
         return !same;
     };
 
-    function buildSetCookieHeader(name: string, value: string, opt: typeof cookieCfg): string {
-        let header = `${name}=${value}; Path=${opt.path}; Max-Age=${opt.maxAgeSec}; SameSite=${opt.sameSite}`;
-        if (opt.domain) header += `; Domain=${opt.domain}`;
-        if (opt.secure) header += `; Secure`;
-        return header;
-    }
-
     // ---- server API
     const server = {
         get: (cookieHeader: string | null | undefined): ConsentState<T> => {
@@ -261,15 +268,10 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
             };
             return buildSetCookieHeader(cookieName, enc(snapshot), cookieCfg);
         },
-        clear: (): string => {
-            let h = `${cookieName}=; Path=${cookieCfg.path}; Max-Age=0; SameSite=${cookieCfg.sameSite}`;
-            if (cookieCfg.domain) h += `; Domain=${cookieCfg.domain}`;
-            if (cookieCfg.secure) h += `; Secure`;
-            return h;
-        }
+        clear: (): string => clearCookieHeader()
     };
 
-    // ========== NEW: Subscribe pattern for React ==========
+    // ========== Subscribe pattern for React ==========
     const listeners = new Set<() => void>();
     const unsetState: ConsentState<T> = { decision: 'unset' };
     let cachedState: ConsentState<T> = unsetState;
@@ -284,7 +286,11 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
     };
 
     const notifyListeners = (): void => {
-        listeners.forEach(cb => { try { cb(); } catch { /* listener error must not break others */ } });
+        listeners.forEach(cb => {
+            try { cb(); } catch (err) {
+                console.error('[consentify] Listener callback threw:', err);
+            }
+        });
     };
 
     // Init cache on browser
@@ -295,19 +301,19 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
 
     // ---- client API
     function clientGet(): ConsentState<T>;
-    function clientGet(category: 'necessary' | T): boolean;
-    function clientGet(category?: 'necessary' | T): ConsentState<T> | boolean {
+    function clientGet(category: Necessary | T): boolean;
+    function clientGet(category?: Necessary | T): ConsentState<T> | boolean {
         // Return cached state for React compatibility
         if (typeof category === 'undefined') return cachedState;
         if (category === 'necessary') return true;
-        return cachedState.decision === 'decided' 
-            ? !!cachedState.snapshot.choices[category] 
+        return cachedState.decision === 'decided'
+            ? !!cachedState.snapshot.choices[category]
             : false;
     }
 
     const client = {
         get: clientGet,
-        
+
         set: (choices: Partial<Choices<T>>) => {
             const fresh = readClient();
             const base = fresh ? fresh.choices : normalize();
@@ -322,20 +328,18 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
                 notifyListeners();
             }
         },
-        
+
         clear: () => {
             for (const k of new Set<StorageKind>([...storageOrder, 'cookie'])) clearStore(k);
             syncState();
             notifyListeners();
         },
 
-        // NEW: Subscribe for React useSyncExternalStore
         subscribe: (callback: () => void): (() => void) => {
             listeners.add(callback);
             return () => listeners.delete(callback);
         },
 
-        // NEW: Server snapshot for SSR (always unset)
         getServerSnapshot: (): ConsentState<T> => unsetState,
 
         guard: (
@@ -344,7 +348,7 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
             onRevoke?: () => void,
         ): (() => void) => {
             let phase: 'waiting' | 'granted' | 'done' = 'waiting';
-            const check = () => clientGet(category as any) === true;
+            const check = () => clientGet(category as Necessary | T) === true;
 
             const tick = () => {
                 if (phase === 'waiting' && check()) {
@@ -365,6 +369,30 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
         },
     };
 
+    // --- Flat top-level API (overloaded for precise return types) ---
+    function flatGet(): ConsentState<T>;
+    function flatGet(cookieHeader: string): ConsentState<T>;
+    function flatGet(cookieHeader: null): ConsentState<T>;
+    function flatGet(cookieHeader?: string | null): ConsentState<T> {
+        return typeof cookieHeader === 'string'
+            ? server.get(cookieHeader)
+            : client.get();
+    }
+
+    function flatSet(choices: Partial<Choices<T>>): void;
+    function flatSet(choices: Partial<Choices<T>>, cookieHeader: string): string;
+    function flatSet(choices: Partial<Choices<T>>, cookieHeader?: string): string | void {
+        if (typeof cookieHeader === 'string') return server.set(choices, cookieHeader);
+        client.set(choices);
+    }
+
+    function flatClear(): void;
+    function flatClear(serverMode: string): string;
+    function flatClear(serverMode?: string): string | void {
+        if (typeof serverMode === 'string') return server.clear();
+        client.clear();
+    }
+
     return {
         policy: {
             categories: init.policy.categories,
@@ -372,9 +400,117 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
         },
         server,
         client,
+
+        get: flatGet,
+        isGranted: (category: Necessary | T): boolean => {
+            return clientGet(category as Necessary | T);
+        },
+        set: flatSet,
+        clear: flatClear,
+        subscribe: client.subscribe,
+        getServerSnapshot: client.getServerSnapshot,
+        guard: client.guard,
     } as const;
 }
 
 // Common predefined category names you can reuse in your policy.
 export const defaultCategories = ['preferences','analytics','marketing','functional','unclassified'] as const;
 export type DefaultCategory = typeof defaultCategories[number];
+
+// --- Google Consent Mode v2 ---
+
+export type GoogleConsentType =
+  | 'ad_storage'
+  | 'ad_user_data'
+  | 'ad_personalization'
+  | 'analytics_storage'
+  | 'functionality_storage'
+  | 'personalization_storage'
+  | 'security_storage';
+
+type GoogleConsentValue = 'granted' | 'denied';
+
+export interface ConsentModeOptions<T extends string> {
+  mapping: Partial<Record<'necessary' | T, GoogleConsentType[]>>;
+  waitForUpdate?: number;
+}
+
+export const defaultConsentModeMapping = {
+    necessary: ['security_storage'],
+    analytics: ['analytics_storage'],
+    marketing: ['ad_storage', 'ad_user_data', 'ad_personalization'],
+    preferences: ['functionality_storage', 'personalization_storage'],
+} as const satisfies Record<string, readonly GoogleConsentType[]>;
+
+declare global {
+  interface Window {
+    dataLayer: unknown[];
+    gtag: (...args: unknown[]) => void;
+  }
+}
+
+function safeGtag(...args: unknown[]): void {
+    try {
+        window.gtag(...args);
+    } catch (err) {
+        console.error('[consentify] gtag call failed:', err);
+    }
+}
+
+export function enableConsentMode<T extends string>(
+  instance: ConsentifySubscribable<T>,
+  options: ConsentModeOptions<T>,
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  window.dataLayer = window.dataLayer || [];
+
+  if (typeof window.gtag !== 'function') {
+    window.gtag = function gtag() {
+      // eslint-disable-next-line prefer-rest-params
+      window.dataLayer.push(arguments);
+    };
+  }
+
+  const resolve = (): Record<string, GoogleConsentValue> => {
+    const state = instance.get();
+    const result: Record<string, GoogleConsentValue> = {};
+
+    for (const [category, gTypes] of Object.entries(options.mapping) as [string, GoogleConsentType[]][]) {
+      if (!gTypes) continue;
+
+      let granted = false;
+      if (category === 'necessary') {
+        granted = true;
+      } else if (state.decision === 'decided') {
+        granted = !!(state.snapshot.choices as Record<string, boolean>)[category];
+      }
+
+      for (const gType of gTypes) {
+        result[gType] = granted ? 'granted' : 'denied';
+      }
+    }
+
+    return result;
+  };
+
+  const defaultPayload: Record<string, unknown> = { ...resolve() };
+  if (options.waitForUpdate != null) {
+    defaultPayload.wait_for_update = options.waitForUpdate;
+  }
+  safeGtag('consent', 'default', defaultPayload);
+
+  const state = instance.get();
+  if (state.decision === 'decided') {
+    safeGtag('consent', 'update', resolve());
+  }
+
+  const unsubscribe = instance.subscribe(() => {
+    const current = instance.get();
+    if (current.decision === 'decided') {
+      safeGtag('consent', 'update', resolve());
+    }
+  });
+
+  return unsubscribe;
+}

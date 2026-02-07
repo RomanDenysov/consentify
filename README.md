@@ -27,12 +27,12 @@ const consent = createConsentify({
 });
 
 // Check consent (client-side)
-consent.client.get('analytics'); // false — not yet granted
+consent.isGranted('analytics'); // false — not yet granted
 
 // User accepts analytics
-consent.client.set({ analytics: true });
+consent.set({ analytics: true });
 
-consent.client.get('analytics'); // true
+consent.isGranted('analytics'); // true
 ```
 
 ## The Full Integration: Blocking Google Analytics Until Consent
@@ -52,7 +52,7 @@ export const consent = createConsentify({
 
 ```ts
 // Load GA only when analytics consent is granted
-consent.client.guard('analytics', () => {
+consent.guard('analytics', () => {
   const s = document.createElement('script');
   s.src = 'https://www.googletagmanager.com/gtag/js?id=G-XXXXXXX';
   s.async = true;
@@ -70,7 +70,7 @@ If the user has already consented, the script loads immediately. If not, `guard(
 You can also handle revocation:
 
 ```ts
-const dispose = consent.client.guard(
+const dispose = consent.guard(
   'marketing',
   () => loadPixel(),      // runs when marketing consent is granted
   () => removePixel(),    // runs if consent is later revoked
@@ -85,16 +85,48 @@ dispose();
 import { consent } from './lib/consent';
 
 document.getElementById('accept-all')?.addEventListener('click', () => {
-  consent.client.set({ analytics: true, marketing: true });
+  consent.set({ analytics: true, marketing: true });
 });
 
 document.getElementById('reject-all')?.addEventListener('click', () => {
-  consent.client.set({ analytics: false, marketing: false });
+  consent.set({ analytics: false, marketing: false });
 });
 
 document.getElementById('reset')?.addEventListener('click', () => {
-  consent.client.clear();
+  consent.clear();
   window.location.reload();
+});
+```
+
+## Google Consent Mode v2
+
+Built-in support for Google Consent Mode v2. No extra package needed.
+
+```ts
+import { createConsentify, enableConsentMode, defaultConsentModeMapping } from '@consentify/core';
+
+const consent = createConsentify({
+  policy: { categories: ['analytics', 'marketing', 'preferences'] as const },
+});
+
+// Wire up Google Consent Mode with the default mapping
+const dispose = enableConsentMode(consent, {
+  mapping: defaultConsentModeMapping,
+  waitForUpdate: 500,
+});
+```
+
+`enableConsentMode` automatically calls `gtag('consent', 'default', ...)` on init and `gtag('consent', 'update', ...)` whenever the user changes their choices. It bootstraps `dataLayer` and `gtag` if they don't exist.
+
+You can also provide a custom mapping:
+
+```ts
+enableConsentMode(consent, {
+  mapping: {
+    necessary: ['security_storage'],
+    analytics: ['analytics_storage'],
+    marketing: ['ad_storage', 'ad_user_data', 'ad_personalization'],
+  },
 });
 ```
 
@@ -126,10 +158,10 @@ export function CookieBanner() {
   return (
     <div role="dialog" aria-label="Cookie consent">
       <p>We use cookies to improve your experience.</p>
-      <button onClick={() => consent.client.set({ analytics: true, marketing: true })}>
+      <button onClick={() => consent.set({ analytics: true, marketing: true })}>
         Accept All
       </button>
-      <button onClick={() => consent.client.set({ analytics: false, marketing: false })}>
+      <button onClick={() => consent.set({ analytics: false, marketing: false })}>
         Reject All
       </button>
     </div>
@@ -168,7 +200,7 @@ import { Analytics } from '../components/Analytics';
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
-  const state = consent.server.get(cookieStore.toString());
+  const state = consent.get(cookieStore.toString());
 
   return (
     <html>
@@ -189,8 +221,8 @@ import { consent } from '../../../lib/consent';
 
 export async function POST(request: Request) {
   const { choices } = await request.json();
-  const cookieHeader = request.headers.get('cookie');
-  const setCookie = consent.server.set(choices, cookieHeader ?? undefined);
+  const cookieHeader = request.headers.get('cookie') ?? '';
+  const setCookie = consent.set(choices, cookieHeader);
 
   const res = NextResponse.json({ ok: true });
   res.headers.append('Set-Cookie', setCookie);
@@ -198,13 +230,13 @@ export async function POST(request: Request) {
 }
 ```
 
-`client.getServerSnapshot()` always returns `{ decision: 'unset' }` during SSR, so hydration mismatches are impossible.
+`getServerSnapshot()` always returns `{ decision: 'unset' }` during SSR, so hydration mismatches are impossible.
 
 ## API Reference
 
 ### `createConsentify(init)`
 
-Returns `{ policy, server, client }`.
+Returns a consent instance with flat top-level methods and `server`/`client` namespaces for advanced use.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -219,25 +251,48 @@ Returns `{ policy, server, client }`.
 | `consentMaxAgeDays` | `number` | — | Auto-expire consent after N days |
 | `storage` | `StorageKind[]` | `['cookie']` | Client storage priority (`'cookie'`, `'localStorage'`) |
 
-### Server API
+### Flat API (primary)
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `get` | `() => ConsentState<T>` | Current consent state (client-side) |
+| `get` | `(cookieHeader: string) => ConsentState<T>` | Read consent from a `Cookie` header (server-side) |
+| `isGranted` | `(category: string) => boolean` | Check a single category (client-side) |
+| `set` | `(choices: Partial<Choices<T>>) => void` | Update consent choices (client-side) |
+| `set` | `(choices: Partial<Choices<T>>, cookieHeader: string) => string` | Returns a `Set-Cookie` header string (server-side) |
+| `clear` | `() => void` | Clear all consent data (client-side) |
+| `clear` | `(serverMode: string) => string` | Returns a clearing `Set-Cookie` header (server-side) |
+| `guard` | `(category, onGrant, onRevoke?) => () => void` | Run code when consent is granted; optionally handle revocation. Returns a dispose function |
+| `subscribe` | `(cb: () => void) => () => void` | Subscribe to changes (React-compatible) |
+| `getServerSnapshot` | `() => ConsentState<T>` | Always returns `{ decision: 'unset' }` for SSR |
+
+### Server / Client Namespaces (advanced)
+
+The `server` and `client` namespaces are still available for direct access:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `server.get` | `(cookieHeader: string \| null \| undefined) => ConsentState<T>` | Read consent from a `Cookie` header |
 | `server.set` | `(choices: Partial<Choices<T>>, currentCookieHeader?: string) => string` | Returns a `Set-Cookie` header string |
 | `server.clear` | `() => string` | Returns a clearing `Set-Cookie` header |
-
-### Client API
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
 | `client.get` | `() => ConsentState<T>` | Current consent state |
 | `client.get` | `(category: string) => boolean` | Check a single category |
 | `client.set` | `(choices: Partial<Choices<T>>) => void` | Update consent choices |
 | `client.clear` | `() => void` | Clear all consent data |
-| `client.guard` | `(category, onGrant, onRevoke?) => () => void` | Run code when consent is granted; optionally handle revocation. Returns a dispose function |
-| `client.subscribe` | `(cb: () => void) => () => void` | Subscribe to changes (React-compatible) |
-| `client.getServerSnapshot` | `() => ConsentState<T>` | Always returns `{ decision: 'unset' }` for SSR |
+| `client.guard` | `(category, onGrant, onRevoke?) => () => void` | Guard with dispose |
+| `client.subscribe` | `(cb: () => void) => () => void` | Subscribe to changes |
+| `client.getServerSnapshot` | `() => ConsentState<T>` | Always `{ decision: 'unset' }` |
+
+### `enableConsentMode(instance, options)`
+
+Wires Google Consent Mode v2 to a consent instance. Returns a dispose function.
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `mapping` | `Partial<Record<category, GoogleConsentType[]>>` | Maps consent categories to Google consent types |
+| `waitForUpdate` | `number` | Milliseconds to wait before applying defaults (optional) |
+
+Google consent types: `ad_storage`, `ad_user_data`, `ad_personalization`, `analytics_storage`, `functionality_storage`, `personalization_storage`, `security_storage`.
 
 ### `useConsentify(instance)` (React)
 
@@ -258,7 +313,6 @@ The `'necessary'` category is always `true` and cannot be disabled. When you cha
 |---------|-------------|
 | [@consentify/core](./packages/core) | Headless consent SDK -- TypeScript-first, SSR-safe, zero dependencies |
 | [@consentify/react](./packages/react) | React hook for @consentify/core |
-| [@consentify/gtm](./packages/gtm) | Google Consent Mode v2 adapter |
 
 ## Coming Soon: Consentify SaaS
 
