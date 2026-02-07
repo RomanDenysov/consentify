@@ -101,13 +101,19 @@ const dec = <T>(s: string) => { try { return JSON.parse(decodeURIComponent(s)) a
 const toISO = () => new Date().toISOString();
 
 function isValidSnapshot<T extends UserCategory>(s: unknown): s is Snapshot<T> {
-    return (
-        typeof s === 'object' && s !== null &&
-        typeof (s as any).policy === 'string' &&
-        typeof (s as any).givenAt === 'string' &&
-        typeof (s as any).choices === 'object' &&
-        (s as any).choices !== null
-    );
+    if (
+        typeof s !== 'object' || s === null ||
+        typeof (s as any).policy !== 'string' || (s as any).policy === '' ||
+        typeof (s as any).givenAt !== 'string' ||
+        typeof (s as any).choices !== 'object' || (s as any).choices === null
+    ) return false;
+    // Validate givenAt is a valid ISO date
+    if (isNaN(new Date((s as any).givenAt).getTime())) return false;
+    // Validate all choice values are booleans
+    for (const v of Object.values((s as any).choices)) {
+        if (typeof v !== 'boolean') return false;
+    }
+    return true;
 }
 
 function readCookie(name: string, cookieStr?: string): string | null {
@@ -172,20 +178,20 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
     const readFromStore = (kind: StorageKind): string | null => {
         switch (kind) {
             case 'cookie': return readCookie(cookieName);
-            case 'localStorage': return canLocal() ? window.localStorage.getItem(cookieName) : null;
+            case 'localStorage': try { return canLocal() ? window.localStorage.getItem(cookieName) : null; } catch { return null; }
             default: return null;
         }
     };
     const writeToStore = (kind: StorageKind, value: string) => {
         switch (kind) {
             case 'cookie': writeCookie(cookieName, value, cookieCfg); break;
-            case 'localStorage': if (canLocal()) window.localStorage.setItem(cookieName, value); break;
+            case 'localStorage': try { if (canLocal()) window.localStorage.setItem(cookieName, value); } catch { /* quota exceeded or access denied */ } break;
         }
     };
     const clearStore = (kind: StorageKind) => {
         switch (kind) {
             case 'cookie': if (isBrowser()) document.cookie = `${cookieName}=; Path=${cookieCfg.path}; Max-Age=0; SameSite=${cookieCfg.sameSite}${cookieCfg.domain ? `; Domain=${cookieCfg.domain}` : ''}${cookieCfg.secure ? '; Secure' : ''}`; break;
-            case 'localStorage': if (canLocal()) window.localStorage.removeItem(cookieName); break;
+            case 'localStorage': try { if (canLocal()) window.localStorage.removeItem(cookieName); } catch { /* access denied */ } break;
         }
     };
     const firstAvailableStore = (): StorageKind => {
@@ -278,7 +284,7 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
     };
 
     const notifyListeners = (): void => {
-        listeners.forEach(cb => cb());
+        listeners.forEach(cb => { try { cb(); } catch { /* listener error must not break others */ } });
     };
 
     // Init cache on browser
@@ -303,8 +309,8 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
         get: clientGet,
         
         set: (choices: Partial<Choices<T>>) => {
-            const prev = client.get();
-            const base = prev.decision === 'decided' ? prev.snapshot.choices : normalize();
+            const fresh = readClient();
+            const base = fresh ? fresh.choices : normalize();
             const next: Snapshot<T> = {
                 policy: policyHash,
                 givenAt: toISO(),
@@ -331,6 +337,32 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
 
         // NEW: Server snapshot for SSR (always unset)
         getServerSnapshot: (): ConsentState<T> => unsetState,
+
+        guard: (
+            category: Necessary | T,
+            onGrant: () => void,
+            onRevoke?: () => void,
+        ): (() => void) => {
+            let phase: 'waiting' | 'granted' | 'done' = 'waiting';
+            const check = () => clientGet(category as any) === true;
+
+            const tick = () => {
+                if (phase === 'waiting' && check()) {
+                    onGrant();
+                    phase = onRevoke ? 'granted' : 'done';
+                    if (phase === 'done') unsub();
+                } else if (phase === 'granted' && !check()) {
+                    onRevoke!();
+                    phase = 'done';
+                    unsub();
+                }
+            };
+
+            const unsub = client.subscribe(tick);
+            tick();
+
+            return () => { phase = 'done'; unsub(); };
+        },
     };
 
     return {
