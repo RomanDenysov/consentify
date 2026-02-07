@@ -15,6 +15,6 @@ jobs:
           node-version: 20
       - uses: pnpm/action-setup@v4
       - run: pnpm install
-      - run: pnpm -r check
       - run: pnpm -r build
+      - run: pnpm -r check
       - run: pnpm test

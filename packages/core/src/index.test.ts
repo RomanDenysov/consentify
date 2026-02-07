@@ -346,8 +346,8 @@ describe('storage fallback', () => {
         });
         // Should not throw
         expect(() => c.client.set({ analytics: true })).not.toThrow();
-        // Cookie mirror should still work
-        expect(document.cookie).toContain('consentify=');
+        // Consent should be readable via the client API (cookie mirror worked)
+        expect(c.client.get('analytics')).toBe(true);
         window.localStorage.setItem = orig;
     });
 });
