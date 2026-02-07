@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="600" height="120" viewBox="0 0 600 120">
-  <rect width="600" height="120" rx="16" fill="#1a1a2e"/>
-  <text x="300" y="72" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="48" font-weight="600" fill="#f0f0f0" letter-spacing="2">consent<tspan fill="#f0f0f0">i</tspan>fy</text>
-  <circle cx="370" cy="52" r="5" fill="#f4a261"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="100" viewBox="0 0 600 100">
+  <rect width="600" height="100" fill="#0a0a0a"/>
+  <text x="300" y="58" text-anchor="middle" font-family="'SFMono-Regular', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Courier New', monospace" font-size="42" font-weight="700" fill="#fafafa" letter-spacing="6">CONSENTIFY</text>
+  <text x="300" y="80" text-anchor="middle" font-family="'SFMono-Regular', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Courier New', monospace" font-size="12" fill="#666" letter-spacing="4">HEADLESS COOKIE CONSENT</text>
 </svg>
