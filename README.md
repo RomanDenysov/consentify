@@ -1,9 +1,11 @@
+<p align="center"><img src="./assets/banner.svg" alt="consentify" width="600"></p>
+
 # consentify
 
 **Headless cookie consent that actually blocks scripts.**
 
 [![npm version](https://img.shields.io/npm/v/@consentify/core.svg)](https://www.npmjs.com/package/@consentify/core)
-[![tests](https://img.shields.io/badge/tests-48%20passing-brightgreen)](#)
+[![CI](https://github.com/RomanDenysov/consentify/actions/workflows/ci.yml/badge.svg)](https://github.com/RomanDenysov/consentify/actions/workflows/ci.yml)
 [![bundle size](https://img.shields.io/bundlephobia/minzip/@consentify/core)](https://bundlephobia.com/package/@consentify/core)
 [![zero deps](https://img.shields.io/badge/dependencies-0-brightgreen)](#)
 [![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue.svg)](https://www.typescriptlang.org/)
@@ -32,6 +34,17 @@ consent.client.set({ analytics: true });
 
 consent.client.get('analytics'); // true
 ```
+
+## Why Consentify?
+
+| | Consentify | CookieBot | CookieYes | DIY |
+|---|---|---|---|---|
+| Bundle size | ~2 KB | 140 KB+ | 90 KB+ | varies |
+| Script blocking | `guard()` | manual | manual | manual |
+| SSR support | native | none | none | manual |
+| Headless (own UI) | yes | no | no | yes |
+| Zero dependencies | yes | no | no | varies |
+| Price | Free / OSS | from $12/mo | from $9/mo | Free |
 
 ## The Full Integration: Blocking Google Analytics Until Consent
 
@@ -261,7 +274,18 @@ The `'necessary'` category is always `true` and cannot be disabled. When you cha
 
 A hosted consent management platform with a visual banner editor, analytics dashboard, and compliance reporting.
 
+- **Visual banner builder** -- drag-and-drop consent UI
+- **Consent analytics dashboard** -- see opt-in/out rates
+- **One-line integration** -- single script tag setup
+- **Multi-language support** -- GDPR-compliant translations
+
 [consentify.dev](https://consentify.dev)
+
+## Roadmap
+
+- `@consentify/gtm` -- Google Consent Mode v2 adapter
+- `@consentify/next` -- Next.js middleware with automatic cookie handling
+- Geo-aware consent defaults -- show banners only where required
 
 ## Support
 
