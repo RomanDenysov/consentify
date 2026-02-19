@@ -300,7 +300,7 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
 
     // Multi-tab sync — notify other tabs on any consent change
     let bc: BroadcastChannel | null = null;
-    if (isBrowser() && typeof BroadcastChannel !== 'undefined') {
+    if (typeof BroadcastChannel !== 'undefined') {
         bc = new BroadcastChannel(`consentify:${cookieName}`);
         bc.onmessage = () => { syncState(); notifyListeners(); };
     }
@@ -338,10 +338,13 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
         },
 
         clear: () => {
+            const hadConsent = cachedState.decision === 'decided';
             for (const k of new Set<StorageKind>([...storageOrder, 'cookie'])) clearStore(k);
             syncState();
-            notifyListeners();
-            bc?.postMessage(null);
+            if (hadConsent) {
+                notifyListeners();
+                bc?.postMessage(null);
+            }
         },
 
         subscribe: (callback: () => void): (() => void) => {
