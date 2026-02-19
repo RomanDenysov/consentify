@@ -1,5 +1,11 @@
 # @consentify/core
 
+## 2.1.0
+
+### Minor Changes
+
+- Add multi-tab consent synchronisation via `BroadcastChannel`. Consent changes made in one browser tab are now automatically reflected in all other open tabs on the same origin.
+
 ## 1.0.0
 
 ### 🎉 Stable Release
