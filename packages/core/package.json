@@ -28,11 +28,16 @@
   "keywords": [
     "cookie",
     "consent",
+    "cookie-consent",
+    "cookie-banner",
+    "consent-management",
     "gdpr",
     "ccpa",
+    "eprivacy",
     "privacy",
-    "typescript",
-    "ssr"
+    "headless",
+    "ssr",
+    "typescript"
   ],
   "sideEffects": false,
   "repository": {
