@@ -300,7 +300,7 @@ export function createConsentify<Cs extends readonly string[]>(init: CreateConse
 
     // Multi-tab sync — notify other tabs on any consent change
     let bc: BroadcastChannel | null = null;
-    if (typeof BroadcastChannel !== 'undefined') {
+    if (isBrowser() && typeof BroadcastChannel !== 'undefined') {
         bc = new BroadcastChannel(`consentify:${cookieName}`);
         bc.onmessage = () => { syncState(); notifyListeners(); };
     }
