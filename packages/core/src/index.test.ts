@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createConsentify, defaultCategories, enableConsentMode, type ConsentifySubscribable, type ConsentState } from './index';
 
 // --- Exported helper access (re-implement for testing since they're not exported) ---
@@ -34,6 +34,29 @@ function clearAllCookies() {
         const name = c.split('=')[0].trim();
         if (name) document.cookie = `${name}=; Max-Age=0; Path=/`;
     });
+}
+
+// --- MockBroadcastChannel for multi-tab sync tests ---
+class MockBroadcastChannel {
+    static channels = new Map<string, Set<MockBroadcastChannel>>();
+    onmessage: ((event: MessageEvent) => void) | null = null;
+
+    constructor(public name: string) {
+        if (!MockBroadcastChannel.channels.has(name)) {
+            MockBroadcastChannel.channels.set(name, new Set());
+        }
+        MockBroadcastChannel.channels.get(name)!.add(this);
+    }
+
+    postMessage(data: unknown) {
+        for (const ch of MockBroadcastChannel.channels.get(this.name) ?? []) {
+            if (ch !== this) ch.onmessage?.(new MessageEvent('message', { data }));
+        }
+    }
+
+    close() {
+        MockBroadcastChannel.channels.get(this.name)?.delete(this);
+    }
 }
 
 // ============================================================
@@ -965,5 +988,67 @@ describe('server API — merge & cookie config', () => {
         const result1 = c.clear('foo=bar');
         const result2 = c.clear('baz=qux');
         expect(result1).toBe(result2);
+    });
+});
+
+// ============================================================
+// 13. Multi-tab sync (BroadcastChannel)
+// ============================================================
+describe('multi-tab sync (BroadcastChannel)', () => {
+    beforeEach(() => {
+        clearAllCookies();
+        MockBroadcastChannel.channels.clear();
+        vi.stubGlobal('BroadcastChannel', MockBroadcastChannel);
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        MockBroadcastChannel.channels.clear();
+    });
+
+    it('set() in one instance notifies listeners in another', () => {
+        const c1 = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const c2 = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const listener = vi.fn();
+        c2.client.subscribe(listener);
+
+        c1.client.set({ analytics: true });
+
+        expect(listener).toHaveBeenCalled();
+    });
+
+    it('receiving instance has updated state after set()', () => {
+        const c1 = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const c2 = createConsentify({ policy: { categories: ['analytics'] as const } });
+
+        c1.client.set({ analytics: true });
+
+        expect(c2.client.get('analytics')).toBe(true);
+    });
+
+    it('clear() in one instance notifies listeners in another', () => {
+        const c1 = createConsentify({ policy: { categories: ['analytics'] as const } });
+        const c2 = createConsentify({ policy: { categories: ['analytics'] as const } });
+        c1.client.set({ analytics: true });
+        const listener = vi.fn();
+        c2.client.subscribe(listener);
+
+        c1.client.clear();
+
+        expect(listener).toHaveBeenCalled();
+        expect(c2.client.get()).toEqual({ decision: 'unset' });
+    });
+
+    it('initiating instance does not double-fire its own listeners', () => {
+        const c1 = createConsentify({ policy: { categories: ['analytics'] as const } });
+        // second instance just to have a channel peer
+        createConsentify({ policy: { categories: ['analytics'] as const } });
+        const listener = vi.fn();
+        c1.client.subscribe(listener);
+
+        c1.client.set({ analytics: true });
+
+        // Fires exactly once from the local notifyListeners(), not again from BroadcastChannel
+        expect(listener).toHaveBeenCalledTimes(1);
     });
 });
