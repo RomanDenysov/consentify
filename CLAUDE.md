@@ -17,6 +17,12 @@ pnpm -r build
 
 # Build core only
 pnpm -w --filter @consentify/core build
+
+# Type-check core (and react transitively)
+pnpm -w --filter @consentify/core check
+
+# Run tests (vitest + happy-dom)
+pnpm test
 ```
 
 ## Publishing
@@ -27,6 +33,14 @@ pnpm changeset           # Create changeset
 pnpm changeset version   # Version packages
 git tag core-v1.0.0 && git push origin core-v1.0.0  # Trigger release
 ```
+
+## Git & GitHub
+
+- Repo lives at `consentify/consentify` (transferred from `RomanDenysov/consentify`)
+- Remote SSH alias: `git@github.com-personal:consentify/consentify.git`
+- **main is branch-protected** — all changes require a PR, no direct push
+- After squash-merging a local branch: `git fetch && git reset --hard origin/main` (not `git pull` — branches diverge)
+- `gh pr create` targets `consentify/consentify` automatically via remote
 
 ## Architecture
 
@@ -47,3 +61,15 @@ Key design patterns:
 - `fnv1a()` / `stableStringify()` - deterministic policy hashing
 - `readCookie()` / `writeCookie()` - isomorphic cookie handling
 - Listener pattern for React reactivity (`listeners` Set, `syncState`, `notifyListeners`)
+
+### SSR Safety
+
+- `isBrowser()` (defined in `src/index.ts`) checks both `window` and `document` — use it for browser-only init
+- `typeof BroadcastChannel !== 'undefined'` is **not** sufficient alone — Node.js 18+ exposes it natively; always pair with `isBrowser()`
+- Server API is cookie-header only; `client.*` methods are browser-only
+
+### Testing
+
+- Single test file: `packages/core/src/index.test.ts`
+- Mock browser globals with `vi.stubGlobal` / `vi.unstubAllGlobals()` in `afterEach`
+- Design docs: `docs/plans/YYYY-MM-DD-<topic>-design.md`
